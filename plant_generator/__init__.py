@@ -1,0 +1,1 @@
+"""MuJoCo strawberry plant generator."""
