@@ -1,0 +1,25 @@
+{
+  "variants": [
+    {
+      "name": "strawberry_seed_2",
+      "parameters": {}
+    },
+    {
+      "name": "strawberry_seed_11",
+      "parameters": {
+        "Leaves/On\\off leaves": false,
+        "Divots/Seed": 11,
+        "Noise shape/W": 17.0,
+        "Main/Scale all": 0.9
+      }
+    },
+    {
+      "name": "strawberry_leaves_only",
+      "part": "leaves",
+      "parameters": {
+        "Leaves/Scale leaves": 1.5,
+        "Leaves/Position leaves": 3.24
+      }
+    }
+  ]
+}

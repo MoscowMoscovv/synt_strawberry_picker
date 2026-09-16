@@ -220,4 +220,11 @@ __marimo__/
 
 # Generated output
 tmp/
+/generated_strawberries/
+/strawberries/
+/dataset/
+/Strawberry/
 MUJOCO_LOG.TXT
+
+# Planning docs (not for commit)
+PLAN_*.md
