@@ -13,7 +13,6 @@ from .geometry import (
     quat_leaf,
     q2s,
     taper_radius,
-    _Ry,
     _Rz,
 )
 from .params import PlantParams
@@ -35,6 +34,21 @@ def _obj_bounds(path: Path) -> tuple[np.ndarray, np.ndarray]:
     return low, high
 
 
+def _berry_alignment(stem_direction: tuple[float, float, float]) -> tuple[np.ndarray, str]:
+    """Aim a berry's local -Z (from its top toward its tip) along its pedicel."""
+    direction = np.asarray(stem_direction, dtype=float)
+    direction /= np.linalg.norm(direction)
+    z_axis = -direction
+    reference = np.array([1.0, 0.0, 0.0])
+    if abs(np.dot(reference, z_axis)) > 0.95:
+        reference = np.array([0.0, 1.0, 0.0])
+    x_axis = reference - np.dot(reference, z_axis) * z_axis
+    x_axis /= np.linalg.norm(x_axis)
+    y_axis = np.cross(z_axis, x_axis)
+    rotation = np.column_stack((x_axis, y_axis, z_axis))
+    return rotation, q2s(quat_from_rotmat(rotation))
+
+
 def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -> str:
     L: list[str] = []
     ct = params.collision
@@ -45,7 +59,7 @@ def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -
     berry_index = 0
 
     def berry_geoms(name: str, radius_scale: float, indent: str,
-                    inverse_rotation: np.ndarray, inverse_quat: str) -> list[str]:
+                    stem_direction: tuple[float, float, float]) -> list[str]:
         nonlocal berry_index
         radius = berry.r_base * radius_scale
         if not berry_sources:
@@ -71,8 +85,9 @@ def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -
             )
 
         top_center = np.array([(low[0] + high[0]) / 2, (low[1] + high[1]) / 2, high[2]])
-        visual_pos = -(inverse_rotation @ (top_center * mesh_scale))
-        collider_pos = inverse_rotation @ np.array([0.0, 0.0, -span[2] * mesh_scale / 2])
+        rotation, berry_quat = _berry_alignment(stem_direction)
+        visual_pos = -(rotation @ (top_center * mesh_scale))
+        collider_pos = rotation @ np.array([0.0, 0.0, -span[2] * mesh_scale / 2])
         half_size = span * mesh_scale / 2
 
         def vec(values: np.ndarray) -> str:
@@ -80,10 +95,10 @@ def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -
 
         return [
             f'{indent}<geom name="{name}" type="mesh" mesh="{asset_name}" '
-            f'pos="{vec(visual_pos)}" quat="{inverse_quat}" '
+            f'pos="{vec(visual_pos)}" quat="{berry_quat}" '
             f'contype="0" conaffinity="0" mass="0" rgba="{params.berry_rgba}"/>',
             f'{indent}<geom name="{name}_collision" type="ellipsoid" '
-            f'pos="{vec(collider_pos)}" quat="{inverse_quat}" '
+            f'pos="{vec(collider_pos)}" quat="{berry_quat}" '
             f'size="{vec(half_size)}" '
             f'contype="{ct.berry[0]}" conaffinity="{ct.berry[1]}" '
             f'rgba="0 0 0 0" density="{berry.density}"/>',
@@ -116,8 +131,6 @@ def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -
         az_rad = math.radians(leaf.azimuth_deg)
         elev_rad = math.radians(leaf.elevation_deg)
         q = quat_leaf(az_rad, elev_rad)
-        inverse_rotation = (_Rz(az_rad) @ _Ry(-elev_rad)).T
-        inverse_quat = q2s((q[0], -q[1], -q[2], -q[3]))
         n_seg = profile.n_seg
         seg_len = profile.length / n_seg
         radii = [taper_radius(profile.r_base, profile.taper, i, n_seg) for i in range(n_seg)]
@@ -273,7 +286,7 @@ def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -
                         f'                    <joint name="leaf{li}_berry{bi}b_joint" type="ball" '
                         f'stiffness="{berry.joint_k:.6f}" damping="{berry.joint_d:.6f}"/>')
                     L.extend(berry_geoms(f"leaf{li}_berry{bi}b_geom", br.sub_berry_r_scale,
-                                         "                    ", inverse_rotation, inverse_quat))
+                                         "                    ", (sdx, sdy, sdz)))
                     L.append(f'                  </body>')
                     L.append(f'                </body>')
                 else:
@@ -283,7 +296,7 @@ def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -
                         f'                  <joint name="leaf{li}_berry{bi}_joint" type="ball" '
                         f'stiffness="{berry.joint_k:.6f}" damping="{berry.joint_d:.6f}"/>')
                     L.extend(berry_geoms(f"leaf{li}_berry{bi}_geom", br.berry_r_scale,
-                                         "                  ", inverse_rotation, inverse_quat))
+                                         "                  ", (dx, dy, dz)))
                     L.append(f'                </body>')
 
                 L.append(f'              </body>')
@@ -303,7 +316,7 @@ def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -
                 f'                  <joint name="leaf{li}_berry_tip_joint" type="ball" '
                 f'stiffness="{berry.joint_k:.6f}" damping="{berry.joint_d:.6f}"/>')
             L.extend(berry_geoms(f"leaf{li}_berry_tip_geom", tc.tip_berry_r_scale,
-                                 "                  ", inverse_rotation, inverse_quat))
+                                 "                  ", (tc.tip_ped_len, 0.0, 0.0)))
             L.append(f'                </body>')
             L.append(f'              </body>')
 
