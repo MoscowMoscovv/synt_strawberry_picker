@@ -77,6 +77,10 @@ plant as usual:
 
 With the literal set to `False`, the plant keeps its original ellipsoid berries.
 With it set to `True`, the plant cycles through berry OBJ files under `dataset/`
-for its visible fruit. Each mesh is scaled to the branch's berry size; an
-invisible ellipsoid supplies collision and mass. If the dataset is empty, run
-`view_strawberry_mujoco.py --check-only` first to generate a berry mesh.
+and attaches each berry's matching generated leaf mesh at its top. The fruit
+and leaves share the same scale and orientation along the berry's pedicel. An
+invisible ellipsoid supplies collision and mass. The dataset must contain a
+leaf OBJ for each berry: `berry.obj` pairs with `leaves_0001.obj`, while
+`berries/strawberry_0001.obj` pairs with `leaves/leaves_0001.obj`. If the
+dataset is empty, run `view_strawberry_mujoco.py --check-only` first to
+generate a pair.

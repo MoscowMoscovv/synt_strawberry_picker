@@ -49,11 +49,14 @@ def _berry_alignment(stem_direction: tuple[float, float, float]) -> tuple[np.nda
     return rotation, q2s(quat_from_rotmat(rotation))
 
 
-def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -> str:
+def build_xml(params: PlantParams, berry_mesh_pairs: list[tuple[Path, Path]] | None = None) -> str:
     L: list[str] = []
     ct = params.collision
     cr = params.crown
-    berry_sources = [(path.resolve(), *_obj_bounds(path)) for path in berry_mesh_paths or []]
+    berry_sources = [
+        (berry_path.resolve(), leaf_path.resolve(), *_obj_bounds(berry_path))
+        for berry_path, leaf_path in berry_mesh_pairs or []
+    ]
     asset_lines: list[str] = []
     asset_names: dict[tuple[Path, float], str] = {}
     berry_index = 0
@@ -70,17 +73,26 @@ def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -
                 f'rgba="{params.berry_rgba}" density="{berry.density}"/>'
             ]
 
-        path, low, high = berry_sources[berry_index % len(berry_sources)]
+        path, leaf_path, low, high = berry_sources[berry_index % len(berry_sources)]
         berry_index += 1
         span = high - low
         mesh_scale = 2 * radius / max(span[0], span[1])
-        key = (path, radius_scale)
+        key = (path, mesh_scale)
         asset_name = asset_names.get(key)
         if asset_name is None:
             asset_name = f"dataset_berry_{len(asset_names)}"
             asset_names[key] = asset_name
             asset_lines.append(
                 f'    <mesh name="{asset_name}" file="{path.as_posix()}" '
+                f'scale="{mesh_scale:.9g} {mesh_scale:.9g} {mesh_scale:.9g}"/>'
+            )
+        leaf_key = (leaf_path, mesh_scale)
+        leaf_asset_name = asset_names.get(leaf_key)
+        if leaf_asset_name is None:
+            leaf_asset_name = f"dataset_berry_leaves_{len(asset_names)}"
+            asset_names[leaf_key] = leaf_asset_name
+            asset_lines.append(
+                f'    <mesh name="{leaf_asset_name}" file="{leaf_path.as_posix()}" '
                 f'scale="{mesh_scale:.9g} {mesh_scale:.9g} {mesh_scale:.9g}"/>'
             )
 
@@ -97,6 +109,9 @@ def build_xml(params: PlantParams, berry_mesh_paths: list[Path] | None = None) -
             f'{indent}<geom name="{name}" type="mesh" mesh="{asset_name}" '
             f'pos="{vec(visual_pos)}" quat="{berry_quat}" '
             f'contype="0" conaffinity="0" mass="0" rgba="{params.berry_rgba}"/>',
+            f'{indent}<geom name="{name}_leaves" type="mesh" mesh="{leaf_asset_name}" '
+            f'pos="{vec(visual_pos)}" quat="{berry_quat}" '
+            f'contype="0" conaffinity="0" mass="0" rgba="{params.leaf_rgba}"/>',
             f'{indent}<geom name="{name}_collision" type="ellipsoid" '
             f'pos="{vec(collider_pos)}" quat="{berry_quat}" '
             f'size="{vec(half_size)}" '
