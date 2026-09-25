@@ -201,7 +201,7 @@ def blender_main(args):
         expected = {path.resolve() for path in destinations}
         extra_objs = [str(path) for path in args.output_dir.rglob("*.obj")
                       if path.resolve() not in expected]
-        if extra_objs:
+        if extra_objs and not args.overwrite:
             raise FileExistsError("Output directory contains OBJ files outside this batch; "
                                   "choose an empty --output-dir: " + ", ".join(extra_objs[:3]))
     if not args.overwrite:
