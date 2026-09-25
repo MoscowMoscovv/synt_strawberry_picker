@@ -223,6 +223,7 @@ tmp/
 /generated_strawberries/
 /strawberries/
 /dataset/
+/scenes/
 /Strawberry/
 MUJOCO_LOG.TXT
 

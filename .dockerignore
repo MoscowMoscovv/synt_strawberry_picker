@@ -1,0 +1,15 @@
+# Allow only source files needed at runtime and for headless checks.
+# In particular, never send the licensed Strawberry asset to the builder.
+**
+!Dockerfile
+!requirements.txt
+!LICENSE
+!plant_generator/
+!plant_generator/*.py
+!tests/
+!tests/*.py
+!batch_generate_strawberries.py
+!generate_plant_grid.py
+!make_crown.py
+!view_strawberry_mujoco.py
+!strawberry_variants.example.json

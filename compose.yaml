@@ -1,0 +1,19 @@
+services:
+  generator:
+    build: .
+    image: strawberry-picker:blender-4.3.2
+    platform: linux/amd64
+    stdin_open: true
+    tty: true
+    volumes:
+      # Licensed source assets stay on the host, outside the image.
+      - type: bind
+        source: ./Strawberry
+        target: /app/Strawberry
+        read_only: true
+      - type: bind
+        source: ./dataset
+        target: /app/dataset
+      - type: bind
+        source: ./scenes
+        target: /output
