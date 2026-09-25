@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import numpy as np
 
@@ -18,6 +20,7 @@ from .geometry import (
 from .params import PlantParams
 
 
+@lru_cache(maxsize=128)
 def _obj_bounds(path: Path) -> tuple[np.ndarray, np.ndarray]:
     """Read the position bounds needed to fit an OBJ to a berry body."""
     low = np.full(3, math.inf)
@@ -354,3 +357,74 @@ def build_xml(params: PlantParams, berry_mesh_pairs: list[tuple[Path, Path]] | N
         L[asset_insert_index:asset_insert_index] = ['  <asset>', *asset_lines, '  </asset>']
 
     return '\n'.join(L)
+
+
+def build_grid_xml(generated: list[PlantParams], spacing: float = 0.7,
+                   berry_mesh_pairs: list[tuple[Path, Path]] | None = None) -> str:
+    """Keep the default plant at the origin and add generated plants on a grid.
+
+    The single-plant builder remains the source of all geometry and physics.
+    Names and mesh references are made unique when its output is assembled.
+    MuJoCo uses XY for the ground plane and Z for height.
+    """
+    if not math.isfinite(spacing) or spacing <= 0:
+        raise ValueError("spacing must be a positive finite number")
+    root = ET.fromstring(build_xml(PlantParams(), berry_mesh_pairs))
+    root.set("model", "strawberry_plant_grid")
+    world = root.find("worldbody")
+    assert world is not None
+    asset = root.find("asset")
+    if asset is None:
+        asset = ET.Element("asset")
+        root.insert(list(root).index(world), asset)
+    mesh_registry = {
+        (mesh.get("file"), mesh.get("scale")): mesh.get("name")
+        for mesh in asset.findall("mesh")
+    }
+
+    columns = math.ceil(math.sqrt(len(generated) + 1))
+    rows = math.ceil((len(generated) + 1) / columns)
+    for index, params in enumerate(generated, start=1):
+        plant_root = ET.fromstring(build_xml(params, berry_mesh_pairs))
+        mesh_names: dict[str, str] = {}
+        plant_assets = plant_root.find("asset")
+        if plant_assets is not None:
+            for mesh in plant_assets.findall("mesh"):
+                key = (mesh.get("file"), mesh.get("scale"))
+                old_name = mesh.get("name")
+                assert old_name is not None
+                if key not in mesh_registry:
+                    mesh_registry[key] = f"grid_mesh_{len(mesh_registry)}"
+                    mesh.set("name", mesh_registry[key])
+                    asset.append(mesh)
+                mesh_names[old_name] = mesh_registry[key]
+
+        plant_world = plant_root.find("worldbody")
+        assert plant_world is not None
+        crown = plant_world.find("body[@name='crown']")
+        assert crown is not None
+        crown.set("pos", f"{(index % columns) * spacing:.6f} "
+                         f"{(index // columns) * spacing:.6f} 0")
+        for element in crown.iter():
+            if "name" in element.attrib:
+                element.set("name", f"plant{index}_{element.get('name')}")
+            if "mesh" in element.attrib:
+                element.set("mesh", mesh_names[element.get("mesh")])
+        world.append(crown)
+
+    ground = world.find("geom[@name='ground']")
+    assert ground is not None
+    ground.set("size", f"{max(10.0, columns * spacing):.6f} "
+                       f"{max(10.0, rows * spacing):.6f} 0.1")
+    center_x = (columns - 1) * spacing / 2
+    center_y = (rows - 1) * spacing / 2
+    # MuJoCo's free viewer camera uses model statistics for its initial framing.
+    root.insert(2, ET.Element("statistic", {
+        "center": f"{center_x:.6f} {center_y:.6f} 0.05",
+        "extent": f"{max(2.0, columns * spacing * 1.5, rows * spacing * 1.5):.6f}",
+    }))
+    ET.SubElement(world, "camera", name="grid_view",
+                  pos=f"{center_x:.6f} {center_y:.6f} "
+                      f"{max(1.5, columns * spacing * 1.7):.6f}",
+                  xyaxes="1 0 0 0 1 0", fovy="45")
+    return ET.tostring(root, encoding="unicode")
