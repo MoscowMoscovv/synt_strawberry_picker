@@ -38,9 +38,14 @@ def parse_args(argv):
     parser.add_argument("--w-range", type=float, nargs=2, default=(0.0, 100.0), metavar=("MIN", "MAX"))
     parser.add_argument("--leaf-scale-range", type=float, nargs=2, default=(1.2, 1.8), metavar=("MIN", "MAX"))
     parser.add_argument("--subdivide", type=int, help="override berry subdivision level (0-10)")
+    parser.add_argument("--max-faces", type=int,
+                        help="simplify each exported mesh to at most this many triangles (>= 4)")
     parser.add_argument("--overwrite", action="store_true", help="replace existing generated files")
     parser.add_argument("--list-parameters", action="store_true")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.max_faces is not None and args.max_faces < 4:
+        parser.error("--max-faces must be at least 4")
+    return args
 
 
 def load_variants(path):
@@ -112,6 +117,8 @@ def external_main(args):
         command.extend([flag, str(pair[0]), str(pair[1])])
     if args.subdivide is not None:
         command.extend(["--subdivide", str(args.subdivide)])
+    if args.max_faces is not None:
+        command.extend(["--max-faces", str(args.max_faces)])
     if args.overwrite:
         command.append("--overwrite")
     if args.list_parameters:
@@ -233,8 +240,28 @@ def blender_main(args):
 
         ev = ob.evaluated_get(depsgraph)
         mesh = ev.to_mesh()
-        vertices, faces = len(mesh.vertices), len(mesh.polygons)
+        mesh.calc_loop_triangles()
+        original_triangles = len(mesh.loop_triangles)
         ev.to_mesh_clear()
+        if args.max_faces is not None and original_triangles > args.max_faces:
+            # Put simplification after Geometry Nodes, and count triangles rather
+            # than OBJ polygons: MuJoCo triangulates quads during loading.
+            ob.modifiers.new(name="Export triangulation", type="TRIANGULATE")
+            decimate = ob.modifiers.new(name="Export face limit", type="DECIMATE")
+            decimate.ratio = args.max_faces / original_triangles
+            decimate.use_collapse_triangulate = True
+            ob.update_tag()
+            depsgraph.update()
+
+        ev = ob.evaluated_get(depsgraph)
+        mesh = ev.to_mesh()
+        mesh.calc_loop_triangles()
+        vertices, faces = len(mesh.vertices), len(mesh.polygons)
+        triangles = len(mesh.loop_triangles)
+        ev.to_mesh_clear()
+        if args.max_faces is not None and triangles > args.max_faces:
+            raise RuntimeError(f"{name}: simplification produced {triangles} triangles; "
+                               f"requested at most {args.max_faces}")
         if faces == 0 or (variant.get("part", "all") != "leaves" and faces <= len(original.data.polygons)):
             raise RuntimeError(f"{name}: evaluated only {faces} faces; node tree may not have run")
 
@@ -251,7 +278,7 @@ def blender_main(args):
         print(f"[{name}] {vertices} vertices, {faces} faces -> {dest}", flush=True)
         records.append({"file": str(dest.relative_to(args.output_dir)).replace("\\", "/"),
                         "part": variant.get("part", "all"), "parameters": variant.get("parameters", {}),
-                        "vertices": vertices, "faces": faces})
+                        "vertices": vertices, "faces": faces, "triangles": triangles})
         ob.select_set(False)
         copied_mesh = ob.data
         copied_group = mod.node_group if mod.node_group != source_modifier.node_group else None
@@ -262,7 +289,7 @@ def blender_main(args):
 
     manifest = {"source_blend": str(args.blend), "source_object": SOURCE_OBJECT,
                 "seed": args.seed if args.count is not None else None,
-                "pairs": args.count, "meshes": records}
+                "pairs": args.count, "max_faces": args.max_faces, "meshes": records}
     (args.output_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
 
