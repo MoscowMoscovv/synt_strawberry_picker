@@ -22,14 +22,13 @@ to connect these folders on your machine to the container:
 
 | Local folder | Container folder | Purpose |
 | --- | --- | --- |
-| `Strawberry/` | `/app/Strawberry/` | Licensed Blender assets, mounted read-only |
 | `dataset/` | `/app/dataset/` | Generated or existing paired OBJ meshes |
 | `scenes/` | `/output/` | Exported MuJoCo scenes and bundled meshes |
 
-The source asset must exist locally at
-`Strawberry/Strawberry/Procedual_strawberry.blend` to generate OBJ meshes.
-It is excluded from the build context and image. Existing dataset meshes can
-be used without the source asset. Compose creates missing mount directories.
+The source asset at `Strawberry/Strawberry/Procedual_strawberry.blend`, its
+textures, and its supplied license are copied into the image during the build.
+No host asset mount is needed to generate meshes. Existing dataset meshes can
+also be reused. Compose creates missing output and dataset mount directories.
 
 Inside the container terminal (Bash), generate a dataset in a new subdirectory,
 then export a plant scene:
@@ -74,7 +73,7 @@ docker compose run --rm generator python generate_plant_grid.py --count 8 --seed
 ```
 
 On Linux, add `--user "$(id -u):$(id -g)" -e HOME=/tmp` after `run --rm` so
-generated files belong to your user. Ensure the three host mount folders exist
+generated files belong to your user. Ensure both host mount folders exist
 and are writable before starting. The image targets `linux/amd64` to match
 Blender 4.3.2's Linux binary.
 
@@ -113,8 +112,12 @@ above it. MuJoCo is Z-up, so the ground plane and grid are XY.
 The procedural asset is `Strawberry/Strawberry/Procedual_strawberry.blend`. Use
 Blender 4.3.x and run the batch driver with regular Python. It starts Blender
 headlessly and evaluates the `Strawberry_procedual` Geometry Nodes object.
-The Blender asset is a local dependency; its license does not permit
-redistributing it with this repository.
+The Blender asset was created by [NorkAnimations](https://x.com/norkanimations)
+and has a [separate license](Strawberry/Strawberry/License%20Agreement.txt).
+It is included in this repository with the creator's redistribution permission.
+The project's Apache 2.0 license does not apply to this third-party asset.
+Its license restricts redistribution; including the files here does not grant
+permission to redistribute them elsewhere.
 
 ```powershell
 python batch_generate_strawberries.py `

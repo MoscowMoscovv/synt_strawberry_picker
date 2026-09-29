@@ -1,5 +1,4 @@
 # Allow only source files needed at runtime and for headless checks.
-# In particular, never send the licensed Strawberry asset to the builder.
 **
 !Dockerfile
 !requirements.txt
@@ -13,3 +12,11 @@
 !make_crown.py
 !view_strawberry_mujoco.py
 !strawberry_variants.example.json
+!Strawberry/
+!Strawberry/Strawberry/
+!Strawberry/Strawberry/Procedual_strawberry.blend
+!Strawberry/Strawberry/License Agreement.txt
+!Strawberry/Strawberry/README.txt
+!Strawberry/Strawberry/Textures/
+!Strawberry/Strawberry/Textures/*.png
+!Strawberry/Strawberry/Textures/*.bmp

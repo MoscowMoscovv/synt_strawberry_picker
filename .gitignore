@@ -224,7 +224,15 @@ tmp/
 /strawberries/
 /dataset/
 /scenes/
-/Strawberry/
+# Track the generator's source asset and its supplied resources only.
+/Strawberry/**
+!/Strawberry/Strawberry/
+!/Strawberry/Strawberry/Procedual_strawberry.blend
+!/Strawberry/Strawberry/License Agreement.txt
+!/Strawberry/Strawberry/README.txt
+!/Strawberry/Strawberry/Textures/
+!/Strawberry/Strawberry/Textures/*.png
+!/Strawberry/Strawberry/Textures/*.bmp
 MUJOCO_LOG.TXT
 
 # Planning docs (not for commit)

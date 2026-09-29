@@ -34,6 +34,7 @@ COPY plant_generator/ ./plant_generator/
 COPY tests/ ./tests/
 COPY batch_generate_strawberries.py generate_plant_grid.py make_crown.py \
     view_strawberry_mujoco.py strawberry_variants.example.json LICENSE ./
+COPY Strawberry/Strawberry/ ./Strawberry/Strawberry/
 RUN mkdir -p /app/dataset /app/Strawberry /output
 
 CMD ["bash"]
