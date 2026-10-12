@@ -22,9 +22,67 @@ import shutil
 import xml.etree.ElementTree as ET
 
 from plant_generator.assets import find_berry_mesh_pairs
+from plant_generator.finger_hitboxes import HALF_SIZE, HITBOX_NAMES, LOCAL_CENTERS
 from plant_generator.mjcf_builder import build_xml
 from plant_generator.procedural import sample_plants
 
+
+_STEM_BODY = re.compile(r"^leaf(\d+)_stem_seg(\d+)$")
+
+
+def _add_scene_cut_constraints(root: ET.Element, plant_root: ET.Element) -> None:
+    """Add detachable translational anchors without changing stem springs.
+
+    Each original ball joint remains in place and keeps its generated stiffness.
+    Three zero-stiffness slide joints provide translation only when the scene
+    connect constraint is disabled at a cut. A dormant weld can then attach
+    the released subtree to the left gripper finger at runtime.
+    """
+    parent_map = {child: parent for parent in plant_root.iter() for child in parent}
+    equality = root.find("equality")
+    if equality is None:
+        equality = ET.SubElement(root, "equality")
+
+    for body in plant_root.iter("body"):
+        match = _STEM_BODY.match(body.get("name", ""))
+        if not match:
+            continue
+        leaf, segment = map(int, match.groups())
+        body_name = body.get("name")
+        parent = parent_map.get(body)
+        if parent is None or parent.tag != "body":
+            raise ValueError(f"Stem body {body_name} has no parent body")
+
+        # Put translation DOFs before the original ball joint so they act as
+        # the ball joint's anchor motion; the active connect removes them.
+        first_joint = next((i for i, child in enumerate(body) if child.tag == "joint"), 0)
+        body_pos = body.get("pos", "0 0 0")
+        axes = (("x", "1 0 0"), ("y", "0 1 0"), ("z", "0 0 1"))
+        for offset, (axis, vector) in enumerate(axes):
+            body.insert(first_joint + offset, ET.Element("joint", {
+                "name": f"leaf{leaf}_stem_seg{segment}_cut_slide_{axis}",
+                "type": "slide", "axis": vector, "limited": "false",
+                "stiffness": "0", "damping": "0", "frictionloss": "0",
+            }))
+
+        parent_site = f"leaf{leaf}_stem_seg{segment}_cut_parent_site"
+        child_site = f"leaf{leaf}_stem_seg{segment}_cut_child_site"
+        ET.SubElement(parent, "site", {
+            "name": parent_site, "pos": body_pos, "size": "0.0001",
+        })
+        ET.SubElement(body, "site", {
+            "name": child_site, "pos": "0 0 0", "size": "0.0001",
+        })
+        ET.SubElement(equality, "connect", {
+            "name": f"cut_leaf{leaf}_stem_seg{segment}",
+            "site1": parent_site, "site2": child_site,
+            "active": "true", "solref": "0.002 1", "solimp": "0.99 0.999 0.001",
+        })
+        ET.SubElement(equality, "weld", {
+            "name": f"hold_leaf{leaf}_stem_seg{segment}",
+            "body1": "left_finger", "body2": body_name,
+            "active": "false", "solref": "0.002 1", "solimp": "0.99 0.999 0.001",
+        })
 
 def _vec3(value: str, option: str) -> tuple[float, float, float]:
     """Parse a MuJoCo-style three-value position."""
@@ -122,6 +180,24 @@ def _prepare_aubo_model(package: Path, position: tuple[float, float, float]) -> 
         }:
             element.set("friction", "2.0 0.1 0.01")
             element.set("solref", "0.01 1")
+
+    # These thin boxes are the physical counterparts of the controller's
+    # debug planes. Collision masks (4/2) make them contact plant structure
+    # geoms (2/25) while excluding the robot's ordinary 1/1 collisions.
+    finger_bodies = {body.get("name"): body for body in gripper.iter("body")
+                     if body.get("name") in {"left_finger", "right_finger"}}
+    if len(finger_bodies) != 2:
+        raise ValueError("AG95 model is missing left_finger or right_finger")
+    size_text = " ".join(f"{value:.9g}" for value in HALF_SIZE)
+    for body_name, geom_name, center in zip(
+            ("left_finger", "right_finger"), HITBOX_NAMES, LOCAL_CENTERS):
+        center_text = " ".join(f"{value:.9g}" for value in center)
+        ET.SubElement(finger_bodies[body_name], "geom", {
+            "name": geom_name, "type": "box", "pos": center_text,
+            "size": size_text, "contype": "4", "conaffinity": "2",
+            "group": "3", "density": "0", "mass": "0", "rgba": "0 0 0 0",
+            "margin": "0",
+        })
 
     robot_default = root.find("default")
     if robot_default is None:
@@ -250,6 +326,7 @@ def build_picker_xml(
     plant_body = plant_world.find("body[@name='crown']")
     if plant_body is None:
         raise ValueError("Plant builder did not produce a crown body")
+    _add_scene_cut_constraints(root, plant_root)
     _set_body_position(plant_body, plant_position)
     # Reuse the robot scene's floor when present; otherwise add the plant floor.
     has_ground = any(geom.get("type") == "plane" for geom in world.findall("geom"))
